@@ -8,6 +8,7 @@ Provides two tools for AI coding agents (Antigravity, Claude Code, Cursor, etc.)
 
 Protocol: MCP stdio, JSON-RPC 2.0 (one JSON message per line).
 """
+from collections import deque
 import json
 import os
 import subprocess
@@ -48,78 +49,120 @@ class Worker:
     def __init__(self):
         self.proc = None
         self.last_cwd = None
+        self._lock = threading.Lock()
+        self._stderr_tail = deque(maxlen=50)
 
     def _alive(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def start(self):
+    def _drain_stderr(self, pipe):
+        try:
+            for line in pipe:
+                self._stderr_tail.append(line.rstrip("\r\n"))
+        except (OSError, ValueError):
+            pass
+
+    def _recent_stderr(self):
+        if not self._stderr_tail:
+            return ""
+        return "\n".join(self._stderr_tail)[-4000:]
+
+    def _start_locked(self):
         if self._alive():
             return
+        self._stderr_tail.clear()
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         self.proc = subprocess.Popen(
             [PYTHON, "-u", WORKER_PATH],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
             cwd=self.last_cwd or os.getcwd(),
             env=env,
         )
+        threading.Thread(target=self._drain_stderr, args=(self.proc.stderr,), daemon=True).start()
 
-    def stop(self):
-        if self._alive():
+    def _stop_locked(self):
+        proc = self.proc
+        self.proc = None
+        if proc is None:
+            return
+        if proc.poll() is None:
             try:
-                self.proc.kill()
+                proc.kill()
             except OSError:
                 pass
-        self.proc = None
+        try:
+            proc.wait(timeout=2)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
 
     def call(self, code, timeout, cwd=None):
-        if cwd:
-            self.last_cwd = cwd
-        self.start()
-        try:
-            payload = {"code": code}
+        with self._lock:
             if cwd:
-                payload["cwd"] = cwd
-            self.proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            self.proc.stdin.flush()
-        except (BrokenPipeError, OSError):
-            self.stop()
-            return {"ok": False, "error": "Failed to send code to the Python worker."}
+                self.last_cwd = cwd
+            self._start_locked()
+            try:
+                payload = {"code": code}
+                if cwd:
+                    payload["cwd"] = cwd
+                self.proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                self.proc.stdin.flush()
+            except (BrokenPipeError, OSError):
+                err_detail = self._recent_stderr()
+                self._stop_locked()
+                msg = "Failed to send code to the Python worker."
+                if err_detail:
+                    msg += "\n" + err_detail
+                return {"ok": False, "error": msg}
 
-        box = {}
+            box = {}
 
-        def reader():
-            box["line"] = self.proc.stdout.readline()
+            def reader():
+                try:
+                    box["line"] = self.proc.stdout.readline()
+                except (OSError, ValueError):
+                    box["line"] = ""
 
-        thread = threading.Thread(target=reader, daemon=True)
-        thread.start()
-        thread.join(timeout)
+            thread = threading.Thread(target=reader, daemon=True)
+            thread.start()
+            thread.join(timeout)
 
-        if thread.is_alive():
-            self.stop()
-            return {
-                "ok": False,
-                "stdout": "",
-                "stderr": "",
-                "error": "Timed out after %ss. Python worker was stopped; session state was lost." % timeout,
-            }
-        line = box.get("line") or ""
-        if not line:
-            self.stop()
-            return {"ok": False, "stdout": "", "stderr": "", "error": "Python worker exited unexpectedly."}
-        try:
-            return json.loads(line)
-        except ValueError:
-            self.stop()
-            return {"ok": False, "stdout": "", "stderr": "", "error": "Invalid response from Python worker."}
+            if thread.is_alive():
+                self._stop_locked()
+                return {
+                    "ok": False,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": "Timed out after %ss. Python worker was stopped; session state was lost." % timeout,
+                }
+            line = box.get("line") or ""
+            if not line:
+                err_detail = self._recent_stderr()
+                self._stop_locked()
+                msg = "Python worker exited unexpectedly."
+                if err_detail:
+                    msg += "\n" + err_detail
+                return {"ok": False, "stdout": "", "stderr": "", "error": msg}
+            try:
+                return json.loads(line)
+            except ValueError:
+                self._stop_locked()
+                return {"ok": False, "stdout": "", "stderr": "", "error": "Invalid response from Python worker."}
 
     def reset(self):
-        self.stop()
+        with self._lock:
+            self._stop_locked()
 
 
 WORKER = Worker()

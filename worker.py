@@ -14,6 +14,14 @@ sys.stdin.reconfigure(encoding="utf-8")
 
 STATE = {"__name__": "__main__"}
 _EXEC_SEQ = 0
+_MAX_LINECACHE_ENTRIES = 200
+
+
+def _safe_repr(value, limit=20000):
+    try:
+        return repr(value)[:limit]
+    except BaseException as exc:
+        return "<repr failed: %s: %s>" % (type(exc).__name__, exc)
 
 
 def execute(code, cwd=None):
@@ -33,6 +41,8 @@ def execute(code, cwd=None):
         _EXEC_SEQ += 1
         filename = "<py_exec_%d>" % _EXEC_SEQ
         linecache.cache[filename] = (len(code), None, code.splitlines(keepends=True), filename)
+        if _EXEC_SEQ > _MAX_LINECACHE_ENTRIES:
+            linecache.cache.pop("<py_exec_%d>" % (_EXEC_SEQ - _MAX_LINECACHE_ENTRIES), None)
         tree = ast.parse(code, filename, "exec")
         last_expr = None
         if tree.body and isinstance(tree.body[-1], ast.Expr):
@@ -54,7 +64,7 @@ def execute(code, cwd=None):
         "ok": ok,
         "stdout": out_buf.getvalue().decode("utf-8", "replace"),
         "stderr": err_buf.getvalue().decode("utf-8", "replace"),
-        "value": repr(value)[:20000] if has_value else None,
+        "value": _safe_repr(value) if has_value else None,
         "has_value": has_value,
     }
 

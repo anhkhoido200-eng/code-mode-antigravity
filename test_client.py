@@ -89,6 +89,23 @@ def main():
     r6 = rpc(9, "tools/call", {"name": "py_exec", "arguments": {"code": "import os; print(os.getcwd())"}})
     assert os.path.normcase(BASE) in os.path.normcase(r6["result"]["content"][0]["text"])
 
+    r7 = rpc(
+        10,
+        "tools/call",
+        {"name": "py_exec", "arguments": {"code": "class BadRepr:\n    def __repr__(self): raise RuntimeError('boom')\nBadRepr()"}},
+    )
+    t7 = r7["result"]["content"][0]["text"]
+    print("bad repr:", t7)
+    assert r7["result"]["isError"] is False and "<repr failed: RuntimeError: boom>" in t7
+
+    r8 = rpc(11, "tools/call", {"name": "py_exec", "arguments": {"code": "import time; time.sleep(5)", "timeout": 1}})
+    t8 = r8["result"]["content"][0]["text"]
+    print("timeout:", t8)
+    assert r8["result"]["isError"] is True and "Timed out after 1s" in t8
+
+    r9 = rpc(12, "tools/call", {"name": "py_exec", "arguments": {"code": "1 + 2"}})
+    assert r9["result"]["isError"] is False and "[value] 3" in r9["result"]["content"][0]["text"]
+
     proc.stdin.close()
     proc.wait(timeout=10)
     print("server exit:", proc.returncode)
