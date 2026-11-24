@@ -1,13 +1,40 @@
-# Code Mode Antigravity
+<div align="center">
 
-> English: [README.md](README.md)
+# ⚡ Code Mode Antigravity
 
-Máy chủ Python REPL siêu nhẹ (**không cần cài thêm thư viện ngoài**) dành cho **Antigravity** và các AI agent hỗ trợ MCP.  
-Giúp AI chạy Python giữ nguyên biến giữa các lần gọi, gộp việc đọc nhiều file, lọc dữ liệu JSON/CSV/SQLite, tính toán… vào **1 bước duy nhất** để tiết kiệm lượt gọi và token.
+**Trang bị cho AI một phiên Python sống (REPL) — gộp 10+ lượt gọi tool thành 1.**
 
-## Cài đặt
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](#cài-đặt)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-2ea44f)](#tại-sao-nên-dùng)
+[![MCP Stdio](https://img.shields.io/badge/MCP-stdio%20JSON--RPC%202.0-6e5494)](#cài-đặt)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Yêu cầu máy đã có **Python 3.8+** và **Git**. Chạy trong Terminal / PowerShell:
+[English](README.md) · [Tiếng Việt](README.vi.md)
+
+</div>
+
+---
+
+Khi phải đọc từng file một, tìm kiếm lặp đi lặp lại rồi đổ toàn bộ nội dung thô vào khung chat, AI sẽ ngốn rất nhiều token, chậm chạp và nhanh đầy bộ nhớ ngữ cảnh.
+
+**Code Mode Antigravity** giải quyết triệt để việc đó bằng một máy chủ MCP siêu nhẹ (**không cần thư viện ngoài**), cung cấp phiên Python sống (`py_exec` + `py_reset`). AI chỉ cần viết 1 đoạn Python ngắn để tự đọc, lọc, tính toán trên máy và **chỉ in ra đúng phần tóm tắt cần thiết** — đồng thời giữ nguyên biến và thư viện đã nạp cho các bước sau.
+
+## 💰 Ước tính mức tiết kiệm Token & Chi phí
+
+> *Ví dụ minh họa: kiểm tra và tổng hợp dữ liệu từ 10 file log/JSON (~5.000 token/file) trong một phiên chat đang có sẵn 50K token.*
+
+| Tiêu chí | Không dùng Code Mode | Có Code Mode (`py_exec`) | Mức tiết kiệm ước tính |
+|---|---|---|---|
+| **Số lượt AI phải chạy** | 10–12 lượt rời rạc | **1–2 lượt** | **Giảm ~80–90% số vòng gọi** |
+| **Dữ liệu thô đẩy vào ngữ cảnh** | ~50.000 token (đổ cả nội dung file) | **~500–1.500 token** (chỉ lấy tóm tắt) | **Giảm ~95%+ phình ngữ cảnh** |
+| **Token mới & chi phí phát sinh** | Tốn thêm ở mỗi lượt và bị tính lại ở các lượt sau | **Chỉ tính 1 lần** cho kết quả gọn | **Tiết kiệm ~60–85% token & chi phí*** |
+| **Độ trễ nhận diện tool** | Phải đọc hướng dẫn (schema) trước | Nạp sớm (`eager: true`) ngay từ lượt 1 | **Vào việc ngay lập tức** |
+
+<sub>*Mức tiết kiệm thực tế tùy thuộc vào độ phức tạp của tác vụ và kích thước file; hiệu quả rõ rệt nhất khi đọc/lọc nhiều file, truy vấn JSON/CSV/SQLite, kiểm tra log hoặc đối chiếu hàng loạt.*</sub>
+
+## 🚀 Cài đặt
+
+Yêu cầu máy đã có **Python 3.8+** và **Git**. Mở Terminal / PowerShell và chạy:
 
 ```bash
 git clone https://github.com/kninrin-droid/code-mode-antigravity.git
@@ -17,21 +44,47 @@ python install_antigravity.py --write
 
 *(Nếu báo không tìm thấy `python`, thử thay bằng `py` trên Windows hoặc `python3` trên macOS/Linux. Sau đó **mở lại Antigravity** là dùng được ngay.)*
 
-<details>
-<summary>Nâng cao: xem cơ chế, cài thủ công, dùng cho Claude Code / Cursor &amp; kiểm thử</summary>
+> [!TIP]
+> Trình cài đặt tự động bật **`eager: true`** cho `py_exec` và cài sẵn bộ quy tắc **`plugin/rules/AGENTS.md`** để AI ưu tiên gộp lệnh vào `py_exec` ngay từ đầu thay vì chạy nhiều lệnh shell rời rạc.
 
-### Lệnh trên tự làm những gì?
-- Tự sao lưu file cấu hình cũ (`*.bak-...`) trước khi sửa để đảm bảo an toàn.
-- Thêm máy chủ `code-mode` (kèm `eager: true` cho `py_exec`) vào file cấu hình MCP của Antigravity.
-- Cài bộ quy tắc `plugin/` (`AGENTS.md`) vào `~/.gemini/config/plugins/code-mode` (thêm `--no-plugin` nếu không muốn cài phần này).
-- Chạy không tham số (`python install_antigravity.py`) nếu chỉ muốn xem trước, chưa ghi file.
+## ✨ Tại sao nên dùng?
+
+* **Không cần cài thư viện ngoài** — chỉ dùng thư viện chuẩn có sẵn của Python.
+* **Giữ trạng thái xuyên suốt phiên** — biến, module đã `import`, hàm tự định nghĩa và thư mục làm việc (`cwd`) được giữ nguyên giữa các lần gọi.
+* **Chống tràn ngữ cảnh thông minh** — tự động cắt output ở ngưỡng ~`50.000` ký tự (giữ phần đầu và cuối) nếu code vô tình in quá dài.
+* **Bảo vệ chống treo** — hỗ trợ `timeout` từ `1–600` giây (mặc định `60` giây), tự dừng tiến trình bị kẹt an toàn.
+* **Hỗ trợ sẵn UTF-8 trên Windows** — tự bật `PYTHONUTF8=1` để đọc/in tiếng Việt không lỗi font.
+* **Đa nền tảng** — tối ưu cho **Antigravity**, dùng được cả cho **Claude Code**, **Cursor** và mọi MCP client hỗ trợ stdio.
+
+## 🧩 Thành phần trong gói
+
+| Thành phần | Vai trò |
+|---|---|
+| `server.py` | Máy chủ MCP stdio JSON-RPC 2.0 (`py_exec`, `py_reset`) |
+| `worker.py` | Tiến trình Python chạy ngầm giữ biến (`STATE`) |
+| `install_antigravity.py` | Script cài tự động (luôn sao lưu `.bak-*` trước khi sửa) |
+| `plugin/` | Bộ quy tắc `AGENTS.md` giúp AI dùng `py_exec` hiệu quả |
+| `test_client.py` | Bộ kiểm thử tự động qua giao thức MCP |
+
+<details>
+<summary>⚙️ Nâng cao: xem trước khi cài, cấu hình thủ công, Claude Code / Cursor &amp; kiểm thử</summary>
+
+### Xem trước cấu hình (không ghi file)
+```bash
+python install_antigravity.py
+```
+
+### Chỉ cài máy chủ MCP (bỏ qua bộ quy tắc `plugin/`)
+```bash
+python install_antigravity.py --write --no-plugin
+```
 
 ### Chạy kiểm thử nhanh
 ```bash
 python -u test_client.py
 ```
 
-### Cài thủ công (Antigravity)
+### Cấu hình thủ công (Antigravity)
 Thêm vào `~/.gemini/config/mcp_config.json` (hoặc **Settings > MCP**):
 ```json
 {
@@ -61,13 +114,11 @@ Thêm vào `~/.gemini/config/mcp_config.json` (hoặc **Settings > MCP**):
 }
 ```
 
-### Công cụ &amp; lưu ý
-- `py_exec(code, cwd?, timeout?)`: chạy Python trong phiên giữ biến; cắt output ở ~50.000 ký tự; `timeout` từ 1–600 giây (mặc định 60 giây).
-- `py_reset()`: xóa sạch biến và thư viện đã nạp trong phiên.
-- **Bảo mật:** `py_exec` chạy bằng quyền người dùng hiện tại trên máy (không phải sandbox), chỉ dùng trong môi trường tin cậy.
+### Lưu ý bảo mật
+`py_exec` chạy Python với quyền người dùng hiện tại trên máy (không phải sandbox cách ly). Chỉ sử dụng trong môi trường tin cậy.
 
 </details>
 
-## Giấy phép
+## 📄 Giấy phép
 
-MIT — [LICENSE](LICENSE)
+MIT — xem [LICENSE](LICENSE).
