@@ -1,0 +1,5 @@
+{
+  "name": "code-mode",
+  "version": "1.0.0",
+  "description": "Agent rules encouraging py_exec batching to reduce tool round-trips and context bloat."
+}
