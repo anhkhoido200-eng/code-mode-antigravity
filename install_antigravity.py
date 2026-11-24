@@ -33,11 +33,6 @@ PLUGIN_DIR = os.path.join(HOME, ".gemini", "config", "plugins", "code-mode")
 ENTRY = {
     "command": PYTHON,
     "args": ["-u", SERVER],
-    "tools": {
-        "py_exec": {
-            "eager": True,
-        },
-    },
 }
 
 
